@@ -1,0 +1,21 @@
+# 防御性忽略：本公开仓严禁出现游戏文件 / 字体 / 打包产物
+# 即使本地工作目录里误放了这些文件，也绝不能进入提交。
+*.iso
+*.bin
+*.dat
+*.mes
+*.mrb
+*.tex
+*.fnt
+*.ttf
+*.otf
+*.7z
+*.7z.tmp
+*.zip
+
+# 常见临时/缓存
+__pycache__/
+*.pyc
+.DS_Store
+~$*
+_scratch_keep/
