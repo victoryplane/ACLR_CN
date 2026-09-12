@@ -1,6 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+bnd.py — AC.BIN (BND) container parser for Armored Core: Last Raven reconnaissance.
+
+Reads the outer `BND` archive (as used by AC.BIN): an 0x20-byte header followed by a
+directory of 16-byte slots, each holding a little-endian 32-bit ID, file offset, size
+and flags. The data area start is auto-detected from the first plausible entry (offset
+>= 0x1000, in-bounds, non-zero size), and `list` also prints the 25 largest sub-files
+so the big payloads (models / textures) stand out immediately.
+
+Usage:
+  python bnd.py list <AC.BIN>
+        List every sub-file (by offset) and then the 25 largest sub-files by size.
+  python bnd.py extract <AC.BIN> <id(hex)> <out>
+        Extract one sub-file by its hexadecimal ID (see `list`) into <out>.
+
+Examples:
+  python bnd.py list AC.BIN
+  python bnd.py extract AC.BIN 1234 out.bin      # 1234 = the hexadecimal ID shown by `list`
+
+Read-only: no file is modified; `extract` only writes <out>.
+Exit code: 0 on success. Too few arguments print this help text (exit 0); a missing or
+non-BND input file fails with an exception (exit 1).
+
+------------------------------------------------------------------------------
+中文说明
+
 AC.BIN (BND) 容器解析工具 —— AC LR 侦察用
 用法:
   python bnd.py list <AC.BIN>                 # 列出全部子文件
@@ -9,6 +34,8 @@ AC.BIN (BND) 容器解析工具 —— AC LR 侦察用
 """
 # 用途：解析 AC.BIN 等外层 BND 容器目录（16 字节槽），列出 / 提取子文件，仅依赖标准库。
 import sys, os
+
+USAGE = (__doc__ or '').strip()
 
 MAGIC = b'BND\0'
 HDR = 0x20
@@ -44,19 +71,23 @@ def load_entries(data, data_start=None):
     return entries
 
 def main():
-    cmd = sys.argv[1]
-    fn = sys.argv[2]
+    argv = sys.argv[1:]
+    if len(argv) < 2 or argv[0] in ('-h', '--help'):
+        print(USAGE)
+        return
+    cmd = argv[0]
+    fn = argv[1]
     with open(fn, 'rb') as f:
         data = f.read()
-    assert data[0:4] == MAGIC, '不是 BND 文件'
+    assert data[0:4] == MAGIC, 'not a BND file (bad "BND\\0" magic)'
     entries = load_entries(data)
-    print(f'解析到 {len(entries)} 个子文件条目')
+    print(f'parsed {len(entries)} sub-file entries')
     if cmd == 'list':
         items = sorted(entries.items(), key=lambda kv: kv[1][0])
         for eid, (off, size, flags) in items:
             print(f'  ID={eid:04X}  offset=0x{off:X}  size=0x{size:X} ({size})')
         # 汇总：按大小排前 20
-        print('\n--- 按大小排序 前 25 大子文件 ---')
+        print('\n--- top 25 sub-files by size ---')
         big = sorted(entries.items(), key=lambda kv: -kv[1][1])[:25]
         for eid, (off, size, flags) in big:
             print(f'  ID={eid:04X}  offset=0x{off:X}  size=0x{size:X} ({size})')
@@ -64,11 +95,11 @@ def main():
         eid = int(sys.argv[3], 16)
         out = sys.argv[4]
         if eid not in entries:
-            print(f'未找到 ID={eid:04X}'); return
+            print(f'ID={eid:04X} not found'); return
         off, size, flags = entries[eid]
         with open(out, 'wb') as o:
             o.write(data[off:off+size])
-        print(f'提取 ID={eid:04X}: {out} ({size} bytes)')
+        print(f'extracted ID={eid:04X}: {out} ({size} bytes)')
 
 if __name__ == '__main__':
     main()

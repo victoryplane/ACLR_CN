@@ -1,8 +1,54 @@
 # -*- coding: utf-8 -*-
-"""PSS(MPEG-PS) 处理的公共函数库（供 pss_remux_v3.py 使用）。
+"""
+pss_remux.py — shared helper library for PSS (MPEG-PS) handling, used by pss_remux_v3.py.
+
+This module holds the low-level MPEG program-stream primitives; the actual remuxer with a
+command line is pss_remux_v3.py. Exported helpers:
+
+  parse_ps(data, stream_ids)
+        Walk a program stream and collect the PES packets whose stream id is in `stream_ids`
+        (`0xE0` video, `0xBD` audio). Recognises the pack start code `00 00 01 BA` (skipped)
+        and PES start codes `00 00 01 xx`; decodes PTS and DTS when the PES flags announce
+        them, and returns one record per packet:
+        [stream id, PTS (0 when absent), DTS or None, raw PES bytes, file offset,
+          PES flags byte 2, header start offset].
+  enc_ts(v, prefix=0x21)
+        Encode a 33-bit timestamp into the 5 packed bytes a PES header expects
+        (prefix 0x21 for PTS, 0x11 for DTS).
+  make_pack(tpl, scr)
+        Reuse the original file's first pack header as a template and rewrite only the 5 SCR
+        bytes for the new timestamp, keeping mux_rate (`0x012663`) and stuffing untouched.
+        Always generate pack headers from a real template — a hand-built SCR is where this
+        project went wrong before (see docs/en/06-pss-video.md).
+  extract_system_header(data)
+        Copy the whole `00 00 01 BB` system header section verbatim, so it can be placed in
+        the first pack (an empty bytes object when the file has none).
+  extract_first_pack(data)
+        Return the original first pack header (from `00 00 01 BA` up to the next start code),
+        for use as the template described above.
+
+⚠️ The early standalone remuxer with "variable-length packs, one PES per pack" made the game
+show a black screen and hang after playback (docs/en/06-pss-video.md, pitfall 1); it is retired. Use
+pss_remux_v3.py (fixed 16 KB packs, strictly replicating the original structure) instead.
+
+Usage:
+  This is a library: it has no command line of its own and importing it does nothing.
+  Running it directly just prints this explanation and exits.
+  The remuxing CLI lives in the module that imports it:
+  python pss_remux_v3.py <original-audio.PSS> <new-video.vob> <target-SIZE> [LBA] [ISO_IN] [ISO_OUT] [out.pss]
+
+Example:
+  python pss_remux_v3.py movie01.pss video.vob 77119492 32200 game.iso game_patched.iso
+  python pss_remux_v3.py movie01.pss video.vob 77119492 "" "" "" movie01_new.pss
+        (77119492 B is the shortened size of the ACLR opening CG, see docs/en/06-pss-video.md.)
+
+------------------------------------------------------------------------------
+中文说明
+
+PSS(MPEG-PS) 处理的公共函数库（供 pss_remux_v3.py 使用）。
 
 提供 parse_ps / enc_ts / make_pack / extract_system_header / extract_first_pack。
-⚠️ 早期「变长 pack、一包一 PES」的独立重封装实现会让游戏播完黑屏卡死（见 docs/06 坑1），
+⚠️ 早期「变长 pack、一包一 PES」的独立重封装实现会让游戏播完黑屏卡死（见 docs/zh/06-pss-video.md 坑 1），
 已弃用；请用 pss_remux_v3.py（固定 16KB pack 严格复刻原版结构）。
 """
 import sys
@@ -106,9 +152,9 @@ def make_pack(tpl, scr):
 
 def main():
     raise SystemExit(
-        '本模块是 pss_remux_v3.py 的公共函数库，不提供独立重封装。\n'
-        '早期「变长 pack、一包一 PES」的封装会让游戏播完黑屏卡死（docs/06 坑1），已弃用；\n'
-        '请使用 pss_remux_v3.py（用法: python pss_remux_v3.py <原版音频.PSS> <新视频.vob> <目标SIZE> ...）')
+        'Usage: this module is the shared helper library for pss_remux_v3.py and does not remux on its own. (用法)\n'
+        'The early "variable-length pack, one PES per pack" muxing made the game show a black screen and then hang after playback (docs/en/06-pss-video.md, pitfall 1); it is retired. (已弃用)\n'
+        'Use pss_remux_v3.py instead: python pss_remux_v3.py <original-audio.PSS> <new-video.vob> <target-SIZE> [LBA] [ISO_IN] [ISO_OUT] [out.pss]')
 
 
 if __name__ == '__main__':

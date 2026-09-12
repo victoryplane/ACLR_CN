@@ -1,9 +1,64 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+fslzss2.py — fsliblzs decompressor for Armored Core: Last Raven (PS2).
+
+This tool unpacks the game's `fsliblzs` compressed containers (LZSS streams, PS2
+little-endian) and can verify itself byte for byte against a reference dump.
+The algorithm below was validated against a disassembly of the decompressor inside
+the game executable; the window / length / distance / end-marker semantics are
+documented in the repository's docs/en/01-unpacking.md (Chinese: docs/zh/01-unpacking.md).
+
+Container layout:
+  offset 0x00 : "fsliblzs" magic (8 bytes)
+  offset 0x10 : u32 LE total file size (including the 0x2c-byte header)
+  offset 0x14 : u32 LE = 1 (compressed flag)
+  offset 0x24 : u32 BE decompressed size
+  offset 0x2c : start of the LZSS compressed stream
+
+LZSS stream (flag-byte scheme, LSB first):
+  The stream is a sequence of 8-operation groups; each group starts with one flag
+  byte, followed by 8 operations. flag bit0 (0x01) belongs to operation 1, bit1
+  (0x02) to operation 2, ... bit7 (0x80) to operation 8.
+  - flag bit = 0 : literal byte, copied through as-is (1 byte).
+  - flag bit = 1 : LZSS back-reference token, 2 bytes [b1, b2]
+        distance      = (b1 << 4) | (b2 >> 4)        # 12 bits
+        length_nibble = b2 & 0xF
+        bytes to copy = length_nibble + 1            # 1..16
+        source        = max(0, current output length - 0x1000) + distance
+        # note: distance is an offset from the start of the 0x1000-byte sliding
+        # window, NOT a relative offset from the current output position
+  - end marker: the game only tests `length_nibble == 0` to stop (it does not check
+        distance). A legal stream never contains a token with length_nibble == 0 and
+        distance != 0, so this implementation simply uses token 00 00 (distance == 0
+        and length_nibble == 0) as the end marker; the two are equivalent on real data.
+        (distance == 0 with length_nibble != 0 is a legal match: copy from the start
+        of the window.)
+
+One special case: if header byte 0x2b == 1 the payload is stored raw and uncompressed
+("rawdata") — data starts at offset 0x30 and its length is the BE size at 0x24.
+
+Usage:
+  python fslzss2.py selftest <compressed> <reference>
+        Decompress <compressed> and compare it byte for byte with <reference>;
+        prints the common-prefix length on mismatch. Exit code 0 if identical, 1 otherwise.
+  python fslzss2.py decompress <compressed> <output>
+        Decompress <compressed> and write the result to <output>.
+
+Examples:
+  python fslzss2.py selftest 0A93.bin 0A93_dec.bin
+  python fslzss2.py decompress 0A93.bin 0A93_dec.bin
+
+Exit code: 0 on success, 1 on a failed self-test or a failed decompression.
+Nonexistent subcommands print this help text. Read-only: nothing is modified in place
+(only <output> is written).
+
+------------------------------------------------------------------------------
+中文说明
+
 fsliblzs 解压器 —— AC Last Raven (PS2) 验证版
 
-算法（与游戏本体解压器反汇编结论逐字节比对一致；窗口/长度/dist/结束标记语义详见本仓 docs/01-解包.md）:
+算法（与游戏本体解压器反汇编结论逐字节比对一致；窗口/长度/dist/结束标记语义详见本仓 docs/zh/01-unpacking.md）:
 
 文件布局:
   offset 0x00 : "fsliblzs" 魔数 (8 字节)
@@ -33,6 +88,8 @@ LZSS 流 (flag 字节制, 位序 LSB 优先):
 """
 # 用途：解压 fsliblzs 容器（LZSS 流，PS2 小端），提供 selftest / decompress 两个子命令，仅依赖标准库。
 import sys
+
+USAGE = (__doc__ or '').strip()
 
 MAGIC = b'fsliblzs'
 HEADER_SIZE = 0x2C   # 压缩流从文件偏移 0x2c 开始
@@ -103,25 +160,29 @@ def fslzss_decompress(data, start=HEADER_SIZE):
 def selftest(cfile, dfile):
     comp = open(cfile, 'rb').read()
     expect = open(dfile, 'rb').read()
-    print(f'压缩 {len(comp)} B, 解压对照 {len(expect)} B')
+    print(f'compressed {len(comp)} B, reference {len(expect)} B')
     out = fslzss_decompress(comp)
     if out is None:
-        print('解压失败 (None)')
+        print('decompression failed (returned None)')
         return False
     if out == expect:
-        print(f'✅ 逐字节一致 ({len(out)} B)')
+        print(f'✅ byte-for-byte identical ({len(out)} B)')
         return True
     else:
-        print(f'❌ 长度 {len(out)} vs 期望 {len(expect)}')
+        print(f'❌ length {len(out)} vs expected {len(expect)}')
         k = 0
         while k < min(len(out), len(expect)) and out[k] == expect[k]:
             k += 1
-        print(f'   最长公共前缀 {k}')
+        print(f'   longest common prefix {k}')
         return False
 
 
 def main():
-    cmd = sys.argv[1]
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ('-h', '--help'):
+        print(USAGE)
+        return
+    cmd = argv[0]
     if cmd == 'selftest':
         ok = selftest(sys.argv[2], sys.argv[3])
         sys.exit(0 if ok else 1)
@@ -131,12 +192,12 @@ def main():
         comp = open(cfile, 'rb').read()
         out = fslzss_decompress(comp)
         if out is None:
-            print('解压失败')
+            print('decompression failed')
             sys.exit(1)
         open(outfile, 'wb').write(out)
-        print(f'解压 {len(comp)} -> {len(out)} B: {outfile}')
+        print(f'decompressed {len(comp)} -> {len(out)} B: {outfile}')
     else:
-        print(__doc__)
+        print(USAGE)
 
 
 if __name__ == '__main__':

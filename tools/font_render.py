@@ -1,46 +1,124 @@
 # -*- coding: utf-8 -*-
-"""0A93 对话字库字形光栅器——AC Last Raven 汉化用。
+"""
+font_render.py — glyph rasterizer for the 0A93 dialogue font library (Armored Core: Last Raven).
+
+Turns text glyphs rasterized from a TTF/TTC font of your choice into the 16x16 4bpp glyph blocks
+(128 bytes each) that the 0A93 font library stores, so the library can be rebuilt with your own
+translation glyphs. This is a **library module**: it exposes functions and has no command-line
+interface, so importing it prints nothing and does nothing.
+
+Rendering pipeline (per glyph):
+  TTF glyph -> high-resolution grayscale -> bicubic/Lanczos downscale to fit 16x16 -> contrast
+  thresholds -> 4bpp CLUT index block.
+
+0A93.fnt bitmap area layout (locked down byte for byte):
+  The bitmap area starts at file offset 0x67E0 and each glyph is 128 bytes = 16 rows x 8 bytes,
+  every byte holding 2 pixels. The 4bpp value stored in a pixel is a CLUT index (0 = transparent
+  background, 5 = brightest core, the rest are antialiasing grey levels).
+  Inside a byte the **low nibble is the LEFT pixel** and the high nibble the right one (getting
+  this the wrong way round injects mirrored glyphs).
+
+CLUT brightness order (dark -> bright) -> index:
+  0x0C->13, 0x17->4, 0x23->8, 0x2F->15, 0x46->2, 0x52->3, 0x5D->7,
+  0x69->14, 0x79->6, 0x8C->11, 0x98->10, 0xA4->9, 0xAF->12, 0xBB->5
+
+Value -> on-screen alpha (measured from emulator texture dumps):
+  v -> RGBA(128,128,128, ALPHA[v]) with ALPHA = [0,0,51,59,16,128,85,59,24,111,103,93,119,8,69,34],
+  i.e. the white core v5 is alpha 128 (semi-transparent, not opaque), the edge index v12 is 119 and
+  the dark index v15 is 34. Only the bright part of the CLUT is used for strokes, to avoid dirty
+  dots from the dim indices.
+
+Functions (every `*_glyph_block` helper returns a 128-byte block, or None when the glyph is empty):
+  resolve_font(name, font_path=None)
+        Resolve a font file: an explicitly passed `font_path` wins, otherwise FONT_DIR + file name.
+  render_gray(ch, font_path, render_px=128, target=15.0, weight=None)
+        Render one character into a 16x16 grayscale array (0.0-1.0, 0 = transparent):
+        render at render_px, crop to the ink bounding box, scale proportionally to `target`,
+        centre it in 16x16.
+  gray_to_clut(gray_rows, cutoff=0.25, core_at=0.60, shadow=0)
+        Grayscale array -> 4bpp value block with a hard threshold (core -> v5, edge -> v12) and
+        isolated-pixel cleanup; `shadow=1` lays one row of v15 directly under every stroke.
+  aa_to_block(aa, core_th=0.60, edge_th=0.30, shadow=True, core=5, edge=12)
+        Same idea on an antialiased 16x16 array: core -> v5, edge -> v12, shadow row v15.
+  aa_to_block_soft(aa, shadow=True, blur_passes=1, gamma=1.0, core_boost=1.0, shadow_val=None)
+        Soft version: 3x3 gaussian blur, then map each pixel through the alpha ramp
+        (`target = round(min(1.0, a ** gamma) * 128)`, nearest ALPHA_RAMP entry) to get a smooth
+        antialiased gradient instead of two levels; default shadow value 13 (alpha 8, the value
+        settled on by measurement).
+  simsun_ink_grid(ch, size=16, font_path=None) / simsun_glyph_block(ch, shadow=True, ...)
+        Use the 16px embedded bitmap (EBDT/EBLC strike) built into SimSun as the glyph source;
+        the ink grid is centred in 16x16 and packed as core v5 plus an optional v15 shadow row.
+  render16_aa(ch, font_path, size=16)
+        16px FreeType-hinted rendering with a bounding box + ink-centroid alignment, clamped so
+        that nothing is ever clipped.
+  simhei_glyph_block(ch, shadow=True, blur_passes=1, gamma=1.0, shadow_val=None, font_path=None)
+        SimHei 16px rendering with blurred soft edges -> value block.
+  render16_ascii_baseline(ch, font_path, size=16, baseline_row=13)
+        ASCII rendering aligned on one shared baseline (the descenders of g/j/p/q stay below it).
+  simhei_ascii_glyph_block(ch, shadow=True, baseline_row=13, font_path=None)
+        The same for ASCII in SimHei, packed to a 128-byte block.
+  blur16(grid, passes=1) / block_ascii(block, bright=5) / nonzero_pixels(block)
+        Helpers: 16x16 3x3 gaussian blur; ASCII art of a block ('.' transparent, '#' core,
+        'o' grey); count of nonzero pixels in a block.
+
+Usage (library — no CLI, import it from your own script):
+  from font_render import simhei_glyph_block
+  block = simhei_glyph_block('汉', font_path='C:/fonts/simhei.ttf')   # -> 128 bytes, or None
+
+Dependencies:
+  Pillow is required for every rendering function; `fontTools` is needed only to instantiate a
+  variable font (e.g. NotoSansSC-VF.ttf) at a fixed weight.
+Fonts are supplied by the user: set the environment variable FONT_DIR=<font directory>, or pass
+`font_path` explicitly to the `*_glyph_block` family. FONT_FILES only maps a friendly name to a
+file name and assumes no absolute system path.
+
+------------------------------------------------------------------------------
+中文说明
+
+0A93 对话字库字形光栅器——AC Last Raven 汉化用。
 
 渲染管线：TTF 字形 → 高分辨率灰度 → 双三次缩小到 16×16 → 强对比 → 4bpp CLUT 索引。
 
 0A93.fnt 位图区格式（已锁定）：
-  位图区起点 0x67E0，每个字形 128 字节 = 16 行 × 8 字节，每字节 2 像素（高半字节=左，低=右）。
+  位图区起点 0x67E0，每个字形 128 字节 = 16 行 × 8 字节，每字节 2 像素（低半字节=左，高=右）。
   4bpp 值是 CLUT 索引（0=背景透明，5=最亮核心，其余为抗锯齿灰阶）。
 
 CLUT 亮度排序（暗→亮）→ 索引：
   0x0C→13, 0x17→4, 0x23→8, 0x2F→15, 0x46→2, 0x52→3, 0x5D→7,
   0x69→14, 0x79→6, 0x8C→11, 0x98→10, 0xA4→9, 0xAF→12, 0xBB→5
 """
-# 用途：把 TTF/TTC 字形光栅化为 0A93 字库的 16×16 4bpp 字形块（128 字节）。依赖 Pillow；fontTools 仅在实例化可变字体时需要。
+# 用途：Rasterize TTF/TTC glyphs into 16×16 4bpp glyph blocks (128 bytes) for the 0A93 font library. Requires Pillow; fontTools is needed only to instantiate a variable font.
 import io
 
-# CLUT 亮度值（v -> 0xRGB 亮度），用于判断索引的明暗
+# CLUT brightness values (v -> 0xRGB brightness), used to tell how light an index is
 CLUT_GRAY = [0x00, 0x00, 0x46, 0x52, 0x17, 0xBB, 0x79, 0x5D,
              0x23, 0xA4, 0x98, 0x8C, 0xAF, 0x0C, 0x69, 0x2F]
 
-# 只用 CLUT 亮索引（0x79~0xBB），暗→亮。避开暗索引避免脏点。
+# Only the bright CLUT indices (0x79~0xBB) are used, dark -> bright. Avoid the dim indices to prevent dirty dots.
 CLUT_BRIGHT_RAMP = [6, 11, 10, 9, 12, 5]   # 0x79,0x8C,0x98,0xA4,0xAF,0xBB
-CLUT_CORE_IDX = 5                          # 0xBB 最亮，核心笔画
-# 暗（描边/阴影）用最暗索引
+CLUT_CORE_IDX = 5                          # 0xBB brightest, the core strokes
+# Dark (outline/shadow) uses the darkest index
 DARK_IDX = 15
 
-# 字体文件由使用者自备：设置环境变量 FONT_DIR=<字体目录>，或调用 *_glyph_block 系列时显式传 font_path。
-# FONT_FILES 只记录「常见字体名 -> 文件名」，不预设任何系统绝对路径。
+# The font file is provided by the user: set the environment variable FONT_DIR=<font directory>, or pass font_path explicitly to the *_glyph_block functions.
+# FONT_FILES only maps "common font name -> file name" and assumes no absolute system path.
 import os
 FONT_DIR = os.environ.get('FONT_DIR', '').strip()
 FONT_FILES = {
-    'noto_sc': 'NotoSansSC-VF.ttf',   # 开源 Noto 系列（可变字体）
-    'simhei':  'simhei.ttf',          # 黑体
-    'msyh':    'msyh.ttc',            # 雅黑
-    'simsun':  'simsun.ttc',          # 宋体（内含 16px 点阵 EBDT/EBLC 1bpp，可作字源）
+    'noto_sc': 'NotoSansSC-VF.ttf',   # open-source Noto family (variable font)
+    'simhei':  'simhei.ttf',          # SimHei
+    'msyh':    'msyh.ttc',            # Microsoft YaHei
+    'simsun':  'simsun.ttc',          # SimSun (contains a 16px bitmap EBDT/EBLC 1bpp strike, usable as a glyph source)
 }
 
 def resolve_font(name, font_path=None):
-    """返回实际字体文件路径：优先用显式传入的 font_path，否则取 FONT_DIR + 文件名。"""
+    """Return the actual font file path: an explicit font_path wins, otherwise FONT_DIR + file name."""
     if font_path:
         return font_path
     if not FONT_DIR:
-        raise SystemExit('未指定字体：请设置环境变量 FONT_DIR=<字体目录>，或显式传入 font_path 参数')
+        raise SystemExit('No font specified: set the environment variable FONT_DIR=<font directory>, '
+                         'or pass the font_path argument explicitly. '
+                         '(未指定字体：请设置环境变量 FONT_DIR=<字体目录>，或显式传入 font_path 参数)')
     return os.path.join(FONT_DIR, FONT_FILES[name])
 
 
@@ -48,7 +126,7 @@ _WT_CACHE = {}
 
 
 def _instantiate_weight(font_path, weight):
-    """把可变字体固化为指定字重（带缓存），返回可用字体路径。"""
+    """Freeze a variable font at the given weight (cached) and return a usable font path."""
     if weight is None or 'VF' not in font_path:
         return font_path
     key = (font_path, weight)
@@ -72,9 +150,10 @@ def _instantiate_weight(font_path, weight):
 
 
 def render_gray(ch, font_path, render_px=128, target=15.0, weight=None):
-    """把单字渲染为 16×16 灰度数组（0.0-1.0，0=透明）。
+    """Render a single character into a 16x16 grayscale array (0.0-1.0, 0 = transparent).
 
-    管线：TTF 渲染 render_px → 裁剪墨迹包围盒 → 等比缩放到 target → 居中放入 16×16。
+    Pipeline: render the TTF at render_px -> crop to the ink bounding box -> scale proportionally
+    to target -> centre it in 16x16.
     """
     from PIL import Image, ImageFont, ImageDraw
 
@@ -91,14 +170,14 @@ def render_gray(ch, font_path, render_px=128, target=15.0, weight=None):
     w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     if w <= 0 or h <= 0:
         return None
-    # 裁剪墨迹
+    # crop the ink
     crop = img.crop((bbox[0], bbox[1], bbox[2], bbox[3]))
-    # 等比缩放到 target（留 1px 呼吸）
+    # scale proportionally to target (leaving 1px of breathing room)
     scale = target / max(w, h)
     nw = max(1, int(round(w * scale)))
     nh = max(1, int(round(h * scale)))
     crop = crop.resize((nw, nh), Image.LANCZOS)
-    # 居中放入 16×16
+    # centre it inside 16x16
     out = [[0.0] * 16 for _ in range(16)]
     ox = (16 - nw) // 2
     oy = (16 - nh) // 2
@@ -109,19 +188,21 @@ def render_gray(ch, font_path, render_px=128, target=15.0, weight=None):
     return out
 
 
-# 单一边缘亮索引（0xAF，次亮）
+# The single bright edge index (0xAF, second brightest)
 CLUT_EDGE_IDX = 12
 
 
 def gray_to_clut(gray_rows, cutoff=0.25, core_at=0.60, shadow=0):
-    """16×16 灰度数组 → 4bpp 值字节块（128 字节）。
+    """16x16 grayscale array -> 4bpp value byte block (128 bytes).
 
-    游戏渲染（经模拟器纹理转储逐像素确认）：
-      v → RGBA(128,128,128, ALPHA[v])，ALPHA=[0,0,51,59,16,128,85,59,24,111,103,93,119,8,69,34]
-      核心 v5→alpha128 全不透明、边缘 v12→119、阴影 v15→34。
-    位图解码：**低半字节 = 左像素**（不是高半字节！之前写反导致注入字形镜像）。
+    What the game renders (confirmed pixel by pixel through emulator texture dumps):
+      v -> RGBA(128,128,128, ALPHA[v]), ALPHA=[0,0,51,59,16,128,85,59,24,111,103,93,119,8,69,34]
+      core v5 -> alpha128 (the maximum, i.e. the most opaque value), edge v12 -> 119, shadow v15 -> 34.
+    Bitmap decoding: **low nibble = LEFT pixel** (not the high nibble! getting it the other way
+    round produced mirrored injected glyphs).
 
-    shadow=1 : 每笔画正下方 1px 垫 v15 阴影（仿原版 dy+1 暗边，实测）。
+    shadow=1 : lay 1px of v15 shadow directly under every stroke (mimicking the original's dy+1
+    dark edge, measured).
     """
     block = bytearray(128)
 
@@ -130,9 +211,9 @@ def gray_to_clut(gray_rows, cutoff=0.25, core_at=0.60, shadow=0):
             return
         bi = y * 8 + x // 2
         if x % 2 == 0:
-            block[bi] = (block[bi] & 0xF0) | v           # 左像素 → 低半字节
+            block[bi] = (block[bi] & 0xF0) | v           # left pixel -> low nibble
         else:
-            block[bi] = (block[bi] & 0x0F) | (v << 4)   # 右像素 → 高半字节
+            block[bi] = (block[bi] & 0x0F) | (v << 4)   # right pixel -> high nibble
 
     grid = [[0] * 16 for _ in range(16)]
     for y in range(16):
@@ -142,7 +223,7 @@ def gray_to_clut(gray_rows, cutoff=0.25, core_at=0.60, shadow=0):
                 continue
             grid[y][x] = CLUT_CORE_IDX if a >= core_at else CLUT_EDGE_IDX
 
-    # 孤立像素清理：8 邻域无墨迹的像素置 0
+    # isolated-pixel cleanup: a pixel with no ink in its 8-neighbourhood is cleared
     for y in range(16):
         for x in range(16):
             if grid[y][x] == 0:
@@ -162,7 +243,7 @@ def gray_to_clut(gray_rows, cutoff=0.25, core_at=0.60, shadow=0):
                 grid[y][x] = 0
 
     if shadow:
-        # 每笔画正下方 1px 垫阴影（若该处非笔画）
+        # lay a shadow 1px directly under every stroke (where that pixel is not a stroke itself)
         for y in range(15, -1, -1):
             for x in range(16):
                 if grid[y][x] and y + 1 < 16 and grid[y + 1][x] == 0:
@@ -177,7 +258,7 @@ def gray_to_clut(gray_rows, cutoff=0.25, core_at=0.60, shadow=0):
 
 
 def block_ascii(block, bright=5):
-    """128 字节 4bpp 块 → ASCII 行（. = 透明, # = 核心, o = 灰阶）。"""
+    """128-byte 4bpp block -> ASCII lines (. = transparent, # = core, o = grey level)."""
     lines = []
     for r in range(16):
         line = []
@@ -203,10 +284,11 @@ def nonzero_pixels(block):
 
 
 def simsun_ink_grid(ch, size=16, font_path=None):
-    """用宋体内置 16px 点阵位图渲染单字，返回 16×16 墨迹网格（1=墨）。
+    """Render one character from SimSun's built-in 16px bitmap and return a 16x16 ink grid (1 = ink).
 
-    依赖 FreeType 自动选择宋体（如 simsun）的 EBDT/EBLC 16px 1bpp strike。
-    按墨迹包围盒居中放入 16×16（对齐原版「墨迹居中 (7.5,7.5)」）。
+    Relies on FreeType automatically picking SimSun's (e.g. simsun's) EBDT/EBLC 16px 1bpp strike.
+    The ink is centred in 16x16 by its bounding box (matching the original's "ink centred on
+    (7.5,7.5)").
     """
     from PIL import Image, ImageFont, ImageDraw
     font = ImageFont.truetype(resolve_font('simsun', font_path), size)
@@ -225,7 +307,7 @@ def simsun_ink_grid(ch, size=16, font_path=None):
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
     w, h = x1 - x0 + 1, y1 - y0 + 1
     if w > 16 or h > 16:
-        # 特大字按比例缩小（极少见）
+        # oversized glyphs are scaled down proportionally (very rare)
         s = min(15 / w, 15 / h)
         nw, nh = max(1, int(w * s)), max(1, int(h * s))
         crop = img.crop((x0, y0, x1 + 1, y1 + 1)).resize((nw, nh), Image.LANCZOS)
@@ -247,10 +329,11 @@ def simsun_ink_grid(ch, size=16, font_path=None):
 
 
 def render16_aa(ch, font_path, size=16):
-    """用指定字体按 16px 渲染单字（FreeType hinting），返回 16×16 灰度数组(0-1)。
+    """Render one character at 16px with the given font (FreeType hinting) -> 16x16 grayscale (0-1).
 
-    混合对齐：包围盒居中（保证不裁）基础上，向墨迹质心校正，
-    但钳制在「不越界不裁切」的范围内——最大化视觉居中又不丢笔画。
+    Hybrid alignment: bounding-box centring (which guarantees no clipping) corrected towards the
+    ink centroid, but clamped to the "no overflow, no clipping" range — as visually centred as
+    possible without losing strokes.
     """
     from PIL import Image, ImageFont, ImageDraw
     font = ImageFont.truetype(font_path, size)
@@ -259,7 +342,7 @@ def render16_aa(ch, font_path, size=16):
     d = ImageDraw.Draw(img)
     d.text((canvas // 2 - size // 2, canvas // 2 - size // 2), ch, font=font, fill=255)
     px = img.load()
-    # 包围盒 + 加权质心
+    # bounding box + weighted centroid
     xs, ys = [], []
     total = 0.0
     cx = cy = 0.0
@@ -279,10 +362,10 @@ def render16_aa(ch, font_path, size=16):
     cy /= total
     x0, x1 = min(xs), max(xs)
     y0, y1 = min(ys), max(ys)
-    # 窗口左上角：让质心对准 (7.5,7.5)
+    # top-left corner of the window: line the centroid up with (7.5,7.5)
     ox_t = cx - 7.5
     oy_t = cy - 7.5
-    # 钳制：窗口 [ox,ox+16) 必须包含包围盒 [x0,x1]×[y0,y1]
+    # clamping: the window [ox,ox+16) must contain the bounding box [x0,x1]x[y0,y1]
     ox = round(ox_t)
     oy = round(oy_t)
     ox = max(ox, x1 - 15)   # x1-ox <= 15
@@ -300,9 +383,10 @@ def render16_aa(ch, font_path, size=16):
 
 def aa_to_block(aa, core_th=0.60, edge_th=0.30, shadow=True,
                 core=CLUT_CORE_IDX, edge=CLUT_EDGE_IDX):
-    """16×16 灰度 → 0A93 值块（低半字节=左）。
+    """16x16 grayscale -> 0A93 value block (low nibble = left).
 
-    核心(≥core_th)→v5，边缘(<core_th且≥edge_th)→v12，阴影=笔画下方 dy+1 垫 v15。
+    core (>=core_th) -> v5, edge (<core_th and >=edge_th) -> v12, shadow = v15 laid at dy+1 below
+    the stroke.
     """
     block = bytearray(128)
 
@@ -329,15 +413,15 @@ def aa_to_block(aa, core_th=0.60, edge_th=0.30, shadow=True,
     return bytes(block)
 
 
-# 值 → 渲染 alpha（实测确认）：[v0..v15]
+# value -> render alpha (measured): [v0..v15]
 VALUE_ALPHA = [0, 0, 51, 59, 16, 128, 85, 59, 24, 111, 103, 93, 119, 8, 69, 34]
-# 按 alpha 从亮到暗排列的 (alpha, value)
+# (alpha, value) ordered from brightest alpha to dimmest
 ALPHA_RAMP = [(128, 5), (119, 12), (111, 9), (103, 10), (93, 11), (85, 6),
               (69, 14), (59, 3), (51, 2), (34, 15), (24, 8), (16, 4), (8, 13), (0, 0)]
 
 
 def blur16(grid, passes=1):
-    """16×16 网格 3×3 高斯模糊。passes=1 只做 1 遍。"""
+    """3x3 gaussian blur of a 16x16 grid. passes=1 does a single pass."""
     g = [row[:] for row in grid]
     kernel = {(-1, -1): 1, (-1, 0): 2, (-1, 1): 1,
               (0, -1): 2, (0, 0): 4, (0, 1): 2,
@@ -358,11 +442,12 @@ def blur16(grid, passes=1):
 
 def aa_to_block_soft(aa, shadow=True, blur_passes=1, gamma=1.0, core_boost=1.0,
                      shadow_val=None):
-    """灰度 → 0A93 值块（模糊化 + 平滑 alpha 渐变，低半字节=左）。
+    """Grayscale -> 0A93 value block (blurred + smooth alpha gradient, low nibble = left).
 
-    blur_passes : 高斯模糊遍数（越大边缘越柔）
-    gamma       : 对比度曲线（<1 提亮边缘，>1 收紧）
-    shadow_val  : 阴影值（默认 13=alpha8 极淡，实测为定稿值）
+    blur_passes : number of gaussian blur passes (more = softer edges)
+    gamma       : contrast curve (<1 brightens the edges, >1 tightens them)
+    shadow_val  : shadow value (default 13 = alpha8, extremely faint; the value settled on by
+                  measurement)
     """
     if shadow_val is None:
         shadow_val = 13
@@ -383,10 +468,10 @@ def aa_to_block_soft(aa, shadow=True, blur_passes=1, gamma=1.0, core_boost=1.0,
             a = grid[y][x]
             if a <= 0.01:
                 continue
-            # 曲线映射到 0..1
+            # map the curve into 0..1
             c = min(1.0, a ** gamma)
             alpha_t = round(c * 128)
-            # 找最近的 ramp alpha
+            # find the nearest alpha on the ramp
             best = 0
             best_d = 999
             for ra, rv in ALPHA_RAMP:
@@ -403,7 +488,7 @@ def aa_to_block_soft(aa, shadow=True, blur_passes=1, gamma=1.0, core_boost=1.0,
 
 
 def simhei_glyph_block(ch, shadow=True, blur_passes=1, gamma=1.0, shadow_val=None, font_path=None):
-    """黑体 16px 渲染 + 模糊柔边 → 0A93 值块。"""
+    """SimHei 16px rendering with blurred soft edges -> 0A93 value block."""
     aa = render16_aa(ch, resolve_font('simhei', font_path))
     if aa is None:
         return None
@@ -412,9 +497,9 @@ def simhei_glyph_block(ch, shadow=True, blur_passes=1, gamma=1.0, shadow_val=Non
 
 
 def render16_ascii_baseline(ch, font_path, size=16, baseline_row=13):
-    """ASCII 字符按基线对齐渲染（g/j/p/q 下伸部在基线下方）。
+    """Render an ASCII character aligned on the baseline (the descenders of g/j/p/q sit below it).
 
-    所有 ASCII 坐落在同一 baseline_row，符合排版规则。
+    Every ASCII character lands on the same baseline_row, which is what typesetting requires.
     """
     from PIL import Image, ImageFont, ImageDraw
     font = ImageFont.truetype(font_path, size)
@@ -448,7 +533,7 @@ def render16_ascii_baseline(ch, font_path, size=16, baseline_row=13):
 
 
 def simhei_ascii_glyph_block(ch, shadow=True, baseline_row=13, font_path=None):
-    """黑体 ASCII 基线对齐 → 0A93 值块（实测定稿）。"""
+    """SimHei ASCII baseline-aligned -> 0A93 value block (measured; the final version)."""
     aa = render16_ascii_baseline(ch, resolve_font('simhei', font_path), baseline_row=baseline_row)
     if aa is None:
         return None
@@ -456,9 +541,10 @@ def simhei_ascii_glyph_block(ch, shadow=True, baseline_row=13, font_path=None):
 
 
 def simsun_glyph_block(ch, shadow=True, core=CLUT_CORE_IDX, edge=CLUT_EDGE_IDX):
-    """simsun 点阵 → 0A93 128 字节字形块（低半字节=左）。
+    """SimSun bitmap -> 0A93 128-byte glyph block (low nibble = left).
 
-    shadow=1：每笔画正下方 1px 垫 v15 阴影（仿原版 dy+1 暗边）。
+    shadow=1: lay 1px of v15 shadow directly under every stroke (mimicking the original's dy+1
+    dark edge).
     """
     grid = simsun_ink_grid(ch)
     if grid is None:

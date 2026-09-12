@@ -196,4 +196,4 @@ extent 的编辑细节见 `05-打包与ISO.md`。
 ## 衔接其他文档
 
 - `05-打包与ISO.md` —— LBA/extent 编辑、文件前移与 ISO 截断的完整做法。
-- `01-解包.md` —— 从 ISO 拿到 LBA/size 文件表的基础。
+- [01 · 解包](01-unpacking.md) —— 从 ISO 拿到 LBA/size 文件表的基础。

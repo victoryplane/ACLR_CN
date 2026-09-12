@@ -1,80 +1,106 @@
-# ACLR_CN · ARMORED CORE LAST RAVEN 简体中文化 —— 教程与工具
+# ACLR_CN · ARMORED CORE LAST RAVEN — Simplified Chinese localization: tutorials & tools
 
-> 本项目是社区汉化研究项目，面向 **ARMORED CORE LAST RAVEN**（PS2）的简体中文化技术路线。
-> 本仓库**只包含教程与工具，不含任何游戏文件**。
+**English** | [简体中文](README.zh-CN.md)
 
-## 这是什么
+> A community localization research project: the technical roadmap for localizing
+> **ARMORED CORE LAST RAVEN** (PS2) into Simplified Chinese.
+> This repository contains **tutorials and tools only — no game files whatsoever**.
 
-一份「如何把一个 PS2 老游戏的文本/字库/视频逆向并汉化」的完整技术笔记与可复用工具集。
-内容源自真实项目实践，以 **ACLR** 为对象，但其中的解包、字库、回写、ISO 装配等方法论
-对同类 PS2 游戏（FromSoftware 早期 AC 系列）也有参考价值。
+## What this is
 
-## 法律声明
+A complete technical write-up plus a reusable toolset answering one question:
+*how do you reverse-engineer and localize the text, font libraries and videos of an old PS2 game?*
+It comes from real work on **ACLR**, but the methodology — unpacking, font libraries, write-back,
+ISO assembly — transfers to other PS2 titles (FromSoftware's earlier Armored Core games in particular).
 
-- 本仓库内所有文档与工具采用 **MIT 许可**（见 [LICENSE](LICENSE)），可自由使用、修改、商用，需保留版权声明。
-- 游戏版权归原公司（FromSoftware / 原发行商）所有；本项目不包含也不提供任何游戏文件。
-- 使用者需**自备正版游戏 ISO**，一切操作请针对自己合法持有的副本进行。
-- 字体请自备（例如开源的 [Noto 系列](https://fonts.google.com/noto) 等）；本仓库不提供任何字体文件。
-- 本仓库中的方法仅用于学习与研究，请勿用于侵犯他人权益的用途。
+## Legal
 
-## 目录结构
+- All documents and tools here are released under the **MIT license** (see [LICENSE](LICENSE)):
+  free to use, modify and redistribute, including commercially, as long as the copyright notice is kept.
+- Game copyright belongs to the original companies (FromSoftware / the original publisher).
+  This project neither contains nor distributes **any game files**.
+- Bring **your own legally owned ISO**, and do all of this on your own copy.
+- Bring your own font too (for example the open-source [Noto family](https://fonts.google.com/noto)).
+  No font files are shipped here.
+- The techniques described are for study and research. Do not use them to infringe on anyone's rights.
+
+## Repository layout
 
 ```
 ACLR_CN/
-├── README.md          # 本文档
-├── LICENSE            # MIT 许可全文
-├── docs/              # 分步技术文档（含「坑与教训」）
-│   ├── 01-解包.md
-│   ├── 02-文本与编码.md
-│   ├── 03-字库与渲染.md
-│   ├── 04-回写与压缩.md
-│   ├── 05-打包与ISO.md
-│   ├── 06-PSS视频.md
-│   └── 07-调试与MCP断点.md
-└── tools/             # 精选可复用工具脚本
+├── README.md            # this document (English)
+├── README.zh-CN.md      # 简体中文说明
+├── GLOSSARY.md          # 中英术语表 / terminology shared by both language editions
+├── LICENSE              # MIT
+├── docs/
+│   ├── zh/              # Chinese technical documents (01 … 08)
+│   └── en/              # English technical documents (same file names as docs/zh)
+└── tools/               # reusable, dependency-light Python scripts
 ```
 
-## 管线总览
+Both language editions use the **same ASCII base file names**, so switching between them is
+just a matter of swapping `docs/zh/` for `docs/en/`. Run `python tools/check_docs_i18n.py`
+to verify the two editions stay in sync (missing translations, mismatched numbers or addresses,
+broken links, structural drift).
 
-| 阶段 | 文档 | 做什么 | 产出/目标 |
+## Pipeline overview
+
+| Stage | Document | What it does | Result |
 |---|---|---|---|
-| 1 | [docs/01-解包.md](docs/01-解包.md) | ISO9660 → AC.BIN → BND → fsliblzs 解压 | 从 ISO 提取全部文本/字库容器 |
-| 2 | [docs/02-文本与编码.md](docs/02-文本与编码.md) | SJIS / MAPPING 码 / 容器 id / 文本表 | 可读可改的译文工作台 |
-| 3 | [docs/03-字库与渲染.md](docs/03-字库与渲染.md) | ac0_j1 / 0A93 / ID=9 字库、位图、CLUT | 简体字库（自备字体生成） |
-| 4 | [docs/04-回写与压缩.md](docs/04-回写与压缩.md) | fslzss 兼容性、等长/变长规则 | 把译文安全写回容器 |
-| 5 | [docs/05-打包与ISO.md](docs/05-打包与ISO.md) | 装配、LBA/extent 验证、瘦身前移 | 可启动的汉化 ISO |
-| 6 | [docs/06-PSS视频.md](docs/06-PSS视频.md) | PSS(MPEG-PS) 提取/重压/重封 | 视频级汉化 |
-| 7 | [docs/07-调试与MCP断点.md](docs/07-调试与MCP断点.md) | AI + 模拟器断点动态逆向 | 破解静态分析到不了的难题 |
+| 1 | [01 · Unpacking](docs/en/01-unpacking.md) | ISO9660 → AC.BIN → BND → fsliblzs decompression | every text / font container extracted |
+| 2 | [02 · Text and Encoding](docs/en/02-text-and-encoding.md) | SJIS / MAPPING codes / container ids / text tables | an editable translation workbench |
+| 3 | [03 · Fonts and Rendering](docs/en/03-fonts-and-rendering.md) | ac0_j1 / 0A93 / ID=9 font libraries, bitmaps, CLUT | a Simplified Chinese font library |
+| 4 | [04 · Write-back and Compression](docs/en/04-write-back-and-compression.md) | fslzss compatibility, equal-/variable-length rules | translations written back safely |
+| 5 | [05 · Packaging and ISO](docs/en/05-packaging-and-iso.md) | assembling, LBA/extent validation, slimming and shifting | a bootable localized ISO |
+| 6 | [06 · PSS Video](docs/en/06-pss-video.md) | PSS (MPEG-PS) extraction / re-encode / remux | localized videos |
+| 7 | [07 · Debugging and MCP Breakpoints](docs/en/07-debugging-and-mcp-breakpoints.md) | driving the emulator from an AI through debug stubs | answers static analysis cannot reach |
+| 8 | [08 · Font Capacity and ELF Patching](docs/en/08-font-capacity-and-elf-patching.md) | font capacity ceiling, savestate forensics, ELF patching | fixes "correct data, broken glyphs" for good |
 
-建议按 01 → 07 顺序阅读；每篇末尾的「坑与教训」是最值得先看的部分。
+Read 01 → 08 in order; the **Pitfalls and lessons** section at the end of every document is the part
+worth reading first. If your only symptom is *"a few glyphs broke after I grew the font library,
+and which glyphs break changes from scene to scene"*, jump straight to document 08.
 
-## tools/ 精选工具
+A **Chinese edition with identical file names** lives in [docs/zh/](docs/zh/) — read it in
+[README.zh-CN.md](README.zh-CN.md).
 
-| 脚本 | 用途 | 依赖 |
+## tools/
+
+Every tool's module docstring is bilingual (English first, then 中文说明), and all runtime console
+output — results, warnings, errors, hints — is in English (a short Chinese gloss may follow in
+parentheses). Run a script with no arguments, or with `--help` where that script supports it, to see
+its usage. A few modules are libraries with no CLI entry point (`font_render.py`, `pss_remux.py`):
+import them instead of running them.
+
+| Script | Purpose | Dependencies |
 |---|---|---|
-| `fslzss2.py` | fsliblzs 容器解压（LZSS 流，selftest/decompress） | 标准库 |
-| `fslzss_compress.py` | fsliblzs LZSS 压缩器 ⚠️ 往返无损≠游戏兼容，见 docs/04 | 标准库 |
-| `bnd.py` | BND 归档解析 | 标准库 |
-| `test_inner_bnd.py` | 内层 BND 结构自检（依赖同仓 fslzss2） | 标准库 |
-| `parse_mes.py` | .mes 对话文本表解析（UTF-16LE 文本区） | 标准库 |
-| `extract_pss.py` | 按 LBA/size 清单从 ISO 抽取 .PSS | 标准库 |
-| `pss_remux.py` | PSS 重封装公共函数库（仅供 v3 导入；早期变长 pack CLI 已弃用，见 docs/06 坑1） | 标准库 |
-| `pss_remux_v3.py` | PSS 重封装器（固定 16KB pack；B9 紧跟内容、尾部 padding 放 B9 之后；可输出 .pss 或写回 ISO） | 标准库 + 同仓 pss_remux |
-| `pss_to_mp4.py` | PSS → MP4 转封装 | 外部 ffmpeg（PATH 或 FFMPEG 环境变量） |
-| `font_render.py` | 自备字体 → 字形位图渲染（4bpp/灰度量化） | Pillow（fontTools 仅可变字体时可选） |
-| `render_atlas.py` | 字形 → 纹理图集排布 | Pillow |
+| `fslzss2.py` | fsliblzs container decompression (LZSS stream; `selftest` / `decompress`) | stdlib |
+| `fslzss_compress.py` | fsliblzs LZSS compressor — ⚠️ lossless round-trip is **not** game compatibility, see docs/04 | stdlib |
+| `bnd.py` | BND archive parser | stdlib |
+| `test_inner_bnd.py` | structural self-check of inner BND files (imports `fslzss2`) | stdlib |
+| `parse_mes.py` | `.mes` dialogue table parser (UTF-16LE text area) | stdlib |
+| `extract_pss.py` | pull `.PSS` files out of an ISO by LBA/size list | stdlib |
+| `pss_remux.py` | shared PSS remux helpers (imported by v3; the early variable-length pack CLI is retired, see docs/06 pitfall 1) | stdlib |
+| `pss_remux_v3.py` | PSS remuxer (fixed 16 KB packs; `B9` right after the content, trailing padding after `B9`; writes `.pss` or back into an ISO) | stdlib + this repo's `pss_remux` |
+| `pss_to_mp4.py` | PSS → MP4 remux | external `ffmpeg` (on PATH or via the `FFMPEG` env var) |
+| `font_render.py` | your font → glyph bitmaps (4bpp / grayscale quantization) | Pillow (`fontTools` optional, variable fonts only) |
+| `render_atlas.py` | glyphs → texture atlas layout | Pillow |
+| `savestate_ram.py` | pull memory snapshots out of an emulator savestate (`.p2s`) and compare them **byte by byte** with a file (contiguous-diff-run criterion) | stdlib + `zstandard` (for zstd members) |
+| `elf_addr.py` | ELF32/MIPS: VA ↔ file offset mapping, `lui`+`addiu` constant-reference finder, constant-relocation patch generator (writes a copy only) | stdlib |
+| `pcsx2_crc.py` | compute / predict the emulator's game CRC; repair per-game settings and patch file naming after an ELF edit | stdlib |
+| `check_docs_i18n.py` | verify the Chinese and English documents stay in sync (missing translations, mismatched numbers/addresses, broken links) | stdlib |
 
-> ⚠️ 压缩器（`fslzss_compress.py`）的自测通过只代表与自己的解压器自洽；游戏是否兼容、
-> 哪些数据能重压哪些不能，务必先读 `docs/04-回写与压缩.md` 再使用。
-> 字体渲染类工具只处理你**自备**的字体文件，本仓库不含任何字体。
+> ⚠️ A passing self-test in `fslzss_compress.py` only proves it round-trips with its own decompressor.
+> Whether the game accepts the result — and which data may be recompressed at all — is a different
+> question: read [docs/en/04-write-back-and-compression.md](docs/en/04-write-back-and-compression.md) first.
+> The font tools only ever process **your own** font files; this repository ships none.
 
-## 前置依赖
+## Prerequisites
 
-- Python 3.x（大多数工具仅标准库；个别工具需要 Pillow / ffmpeg，见各工具顶部注释）
-- 正版游戏 ISO（自备）
-- 字体文件（自备）
-- 文档 07 涉及的模拟器调试能力请读者自行获取对应工具
+- Python 3.x (most tools are stdlib-only; a few need Pillow / ffmpeg / zstandard — see each script's header)
+- your own legally obtained game ISO
+- your own font file
+- the emulator debugging capabilities used by document 07 must be obtained by you
 
-## 联系
+## Contact
 
 plane &lt;1659323436@qq.com&gt;

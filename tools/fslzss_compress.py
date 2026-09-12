@@ -1,15 +1,66 @@
 # -*- coding: utf-8 -*-
-"""fsliblzs LZSS 压缩器 —— AC Last Raven (PS2) 回写用。
+"""fslzss_compress.py — fsliblzs LZSS compressor for Armored Core: Last Raven (PS2) write-back.
+
+Compresses a byte stream into an `fsliblzs` container: a 0x2c-byte header followed by
+a greedy LZSS stream, plus a final end marker and 16-byte alignment padding.
+
+⚠️ IMPORTANT WARNING: a lossless decompress round-trip does NOT mean the decompressor
+inside the game will accept the file. Before putting compressed data back into the game,
+read the repository's docs/en/04-write-back-and-compression.md (Chinese: docs/zh/04-write-back-and-compression.md):
+which data may be recompressed and which must keep its original compression.
+Rule of thumb: large blocks containing binary data (e.g. part 5xxxx 3D models +
+textures) must **not** be recompressed with this tool — keep the original compression.
+Plain text (dialogue .mes, briefings, part 6xxxx descriptions) may be recompressed.
+
+Header field 0x20: every original sample is 0x00000100 (256) and this compressor writes
+the same value. The game's decompressor does not actually read that field (see
+docs/en/01-unpacking.md), but matching the original reduces the risk of other tools or
+loaders misjudging the file.
+
+Format (see fslzss2.py, the decompressor whose algorithm matches the game's own
+decompressor; see docs/en/01-unpacking.md):
+  0x00 'fsliblzs'
+  0x10 u32 LE total file size
+  0x14 u32 = 1
+  0x24 u32 BE decompressed size
+  0x2B 0 = compressed / 1 = rawdata
+  0x2C start of the LZSS stream
+
+LZSS stream:
+  Each group holds 8 operations and starts with one flag byte, LSB first.
+  flag bit = 0: one literal byte; = 1: a 2-byte token [b1,b2]
+    dist = (b1<<4)|(b2>>4); len = (b2&0xF)+1
+    src = max(0, current output length - 0x1000) + dist
+  End marker: the game stops as soon as length_nibble == 0; in a legal stream dist is
+    always 0, and this implementation emits token 00 00 as the end marker — the two are
+    equivalent on real data.
+
+Usage:
+  python fslzss_compress.py <input> <output>
+        Compress <input> (any bytes) into <output> as an fsliblzs container and print
+        the size ratio.
+
+Examples:
+  python fslzss_compress.py 0A93_dec.bin 0A93.bin
+  python fslzss_compress.py dialogue.mes dialogue.mes.lzs
+
+Exit code: 0 on success. Invalid usage prints this help text and exits non-zero.
+Read-only with respect to <input>; only <output> is written.
+
+------------------------------------------------------------------------------
+中文说明
+
+fsliblzs LZSS 压缩器 —— AC Last Raven (PS2) 回写用。
 
 ⚠️ 重要警告：往返解压无损 ≠ 游戏内解压器一定兼容。压缩后的数据要装回游戏时，
-请先读本仓 docs/04-回写与压缩.md：哪些数据能重压、哪些必须保持原版压缩。
+请先读本仓 docs/zh/04-write-back-and-compression.md：哪些数据能重压、哪些必须保持原版压缩。
 经验规则：含二进制的大块数据（如部件 5xxxx 的 3D 模型+贴图）**不得**用本压缩器重压，
 必须保持原版压缩；纯文本（对话 .mes / 简报 / 部件 6xxxx 描述）可重压。
 
 头部 0x20 字段：原版样本恒为 0x00000100(256)，本压缩器照原版填写；游戏解压器实际不读该字段
-（见 docs/01-解包.md），但保持与原版一致可降低其它工具/装载器误判的风险。
+（见 docs/zh/01-unpacking.md），但保持与原版一致可降低其它工具/装载器误判的风险。
 
-格式见 fslzss2.py（解压器，算法与游戏本体解压器一致，见 docs/01-解包.md）:
+格式见 fslzss2.py（解压器，算法与游戏本体解压器一致，见 docs/zh/01-unpacking.md）:
   0x00 'fsliblzs'
   0x10 u32 LE 文件总大小
   0x14 u32 = 1
@@ -32,6 +83,8 @@ LZSS 流:
 # 注意：往返解压无损 ≠ 游戏内解压器一定兼容，对含二进制的大块数据请谨慎使用。
 import io, struct, sys
 from collections import defaultdict
+
+USAGE = (__doc__ or '').strip()
 
 MAGIC = b'fsliblzs'
 HEADER_SIZE = 0x2C
@@ -130,11 +183,18 @@ def fslzss_compress(data):
 
 
 def main():
+    argv = sys.argv[1:]
+    if '-h' in argv or '--help' in argv:
+        print(USAGE)
+        return
+    if len(argv) < 2:
+        print(USAGE)
+        sys.exit(1)
     src, dst = sys.argv[1], sys.argv[2]
     data = io.open(src, 'rb').read()
     out = fslzss_compress(data)
     io.open(dst, 'wb').write(out)
-    print(f'压缩 {len(data)} -> {len(out)} B ({len(out) * 100 / max(1, len(data)):.1f}%) -> {dst}')
+    print(f'compressed {len(data)} -> {len(out)} B ({len(out) * 100 / max(1, len(data)):.1f}%) -> {dst}')
 
 
 if __name__ == '__main__':
