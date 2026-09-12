@@ -162,10 +162,9 @@ When the new content is markedly smaller, the cleaner approach:
    LE and BE byte orders must be changed**;
 5. Truncate the ISO to its new length.
 
-A measured example (ACLR opening CG): the real content occupies only 53.9% (77,108,839 B), and the remaining
-62.9 MB is padding;
-after shortening with approach B the file is 77,119,492 B, the subsequent files shift forward by 32,200 sectors
-(65,945,600 B) in total, and the ISO shrinks by approximately 66 MB.
+A measured example (ACLR opening CG): the old file was 143,065,092 B (`ceil(143,065,092/2048)` = 69,857 sectors);
+of that, the real content (video + audio) occupies only 53.9% (77,108,839 B) and the remaining 62.9 MiB is padding.
+After shortening with approach B the file is 77,119,492 B (77,119,488 B of 2048-aligned content + the 4-byte `00 00 01 B9`, i.e. 37,657 sectors), and the **29** following files shift forward by **32,200** sectors (= 69,857 − 37,657, i.e. 65,945,600 B = 62.9 MiB); the ISO shrinks by approximately 62.9 MiB.
 For the details of editing extents, see [05 · Packaging and ISO](05-packaging-and-iso.md).
 
 > Before you start, confirm first: does the game read videos **by directory file name** or by **hard-coded LBA**?
@@ -188,7 +187,7 @@ For the details of editing extents, see [05 · Packaging and ISO](05-packaging-a
        content pack immediately, with nothing but padding **after B9**;
    - Look at the B7→B9 distance: in the original the content fills the file, with B7 and B9 both at approximately
      99% and only about 18 KB apart;
-     if tens of MB of `0xBE/0xFF` padding sit in front of B9, that is the symptom of "pitfall 2".
+     if tens of MB of `0xBE/0xFF` padding (62.9 MiB in this example) sit in front of B9, that is the symptom of "pitfall 2".
 4. **Write-back verification**: if you went the shift-forward route, re-check the extent (size/LBA, both byte
    orders) of every shifted file, and confirm the ISO boots and the other files are readable.
 
@@ -212,9 +211,9 @@ For the details of editing extents, see [05 · Packaging and ISO](05-packaging-a
 - **Root cause**: for the sake of "in-place equal-length write-back", the space saved by re-encoding is filled up to
   the original file size with pure `0xBE` padding (content 0xFF),
   and `00 00 01 B9` is placed at the very end of the file. With a low re-encode bitrate, the real content occupies
-  only a bit over half, and the tens of MB after it are all padding,
+  only a bit over half, and the 62.9 MiB (about 46%) after it are all padding,
   with the **padding before B9**. The game's demuxer takes `00 00 01 B9` as the end signal, so after the last frame
-  it still has to read/demux all those MB of padding
+  it still has to read/demux all 62.9 MiB of that padding
   before it reaches B9 → black screen. You can observe that the SCR in that region never advances, confirming that
   the delay comes from disc reading/demuxing, not from waiting on timestamps.
 - **How to avoid** (choose one):
@@ -224,7 +223,7 @@ For the details of editing extents, see [05 · Packaging and ISO](05-packaging-a
   2. **Genuine shortening**: truncate to the last content pack (sector-aligned) + B9, shift the subsequent files
      forward as a whole, update the extents, and truncate the ISO (see "Writing back", approach B).
 - **Number comparison**: in the original, B7 and B9 are both at approximately 99% and only about 18 KB apart; in the
-  pathological version, 62.9 MB of dead padding sits in front of B9.
+  pathological version, 62.9 MiB of dead padding sits in front of B9.
 
 ### Pitfall 3: FFmpeg does not output sequence_end
 

@@ -174,8 +174,10 @@ appear **inside** a file (for example, padding inside a video stream); that is n
   `915676`, and wrote in the comment "first free sector after some large file";
 - In reality the video directory already starts at LBA `915631` (ES1.PSS); `915676` is just **an
   all-zero run inside ES1.PSS**, mistakenly taken for free space;
-- Result: the new 660 MB main container was written starting at `915676`, completely covering the
-  video region `915631 ~ 1264644` (ES1~ES5 plus the first half of ES6);
+- Result: the new main container (660,333,653 B ≈ 322,430 sectors) was written from `915676` to about
+  `1238105`, overwriting the **bulk** of the video region (`915631` ~ `1264644`) — **ES1~ES5 were
+  destroyed and the first half of ES6 was overwritten** (the last ~26,540 sectors of the video region,
+  i.e. the second half of ES6, were never written to);
 - The opening video I1.PSS, however, starts at `1264645`, **after** the overwritten region — hence "the
   opening has video, but the ending is guaranteed to be a black screen", and free missions do not play
   the ending CG, so it was very hard to reproduce.
@@ -353,7 +355,7 @@ Only when all four are green do you move on to testing in the emulator.
 
 | Symptom | Root cause | How to avoid |
 |---|---|---|
-| In the main-line ending mission, after beating the Boss and before the results screen, there is **always a black screen**; free missions cannot reproduce it | The new main container's placement was misjudged as the "first all-zero free sector", when it was actually an all-zero run inside the ending video ES1.PSS, so it completely covered the ending videos ES1~ES6; the opening video I1 is **after** the overwritten region, which is why the opening was normal and only the ending went black | The placement must be at the end of the ISO or a free region verified against the file table; after assembly, automatically assert that the new range does not intersect any file range |
+| In the main-line ending mission, after beating the Boss and before the results screen, there is **always a black screen**; free missions cannot reproduce it | The new main container's placement was misjudged as the "first all-zero free sector", when it was actually an all-zero run inside the ending video ES1.PSS, so it overwrote ending videos ES1~ES5 and the first half of ES6; the opening video I1 is **after** the overwritten region, which is why the opening was normal and only the ending went black | The placement must be at the end of the ISO or a free region verified against the file table; after assembly, automatically assert that the new range does not intersect any file range |
 | Individual missions hang on the loading screen and cannot be entered | The mission container was appended above ~628 MiB, and the mission loader cannot read such a high offset (ceiling approximately 626~628 MiB) | Keep appended subfiles' offsets below the ceiling; for a free placement, prefer "the orphan region after the end of the original data"; use a two-way controlled comparison of "original data at the appended position" to separate content from position |
 | Video header verification fails after shifting forward | Shifting forward (destination < source) but copying in reverse from high to low, overwriting source data not yet read out | Always **copy forward** (low → high) when shifting forward |
 | A range "looks free" so it is occupied directly | The 63 MiB range is 94%+ non-zero; it is leftover old containers from early assembly runs that were later overwritten/reverted (an orphan region), merely referenced by no BND entry | An orphan region is reclaimable, but you must first confirm no entry references it; do not occupy it at will as a "blank region" |

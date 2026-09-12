@@ -169,7 +169,7 @@ Key facts:
 
 - The alpha of the white core `nib1` is **128 (semi-transparent)**, not 255.
 - The alpha of `nib3` is **0 (fully transparent)**.
-- The brightness of `nib2~11` is **out of order**: `2 > 5 > 10 > 6 > 7 > 11 > 8 > 4 > 9 > 3`.
+- The brightness of `nib2~11` is **out of order** (**ties broken by alpha**): `2 > 5 > 10 > 6 > 7 > 11 > 8 > 4 > 9 > 3`.
 
 Consequence: if you preview with "a 16-level smooth ramp you imagined", the preview looks fine while real hardware comes out greyish and fringed. The correct approach is: **reverse-engineer the real CLUT from a game texture dump, then quantize by nearest match against the CLUT's RGB brightness** (below the threshold counts as transparent). Pseudocode for grayscale→nibble quantization:
 
@@ -214,7 +214,7 @@ for ch in chars:
 # 8. Overwrite/append in place, keeping the total size of the containing container and of the whole image unchanged
 ```
 
-Among these, "no shadow" and "no outline" are the key to a consistent look: an outline thickens strokes and at low resolution easily fills in the gaps between strokes (blobbing), which is especially visible at small sizes.
+Among these, "do not crop the ink", "no outline" and "no shadow" are the key to a consistent look: an outline thickens strokes and at low resolution easily fills in the gaps between strokes (blobbing), which is especially visible at small sizes.
 
 ## 8. 16-byte alignment: unaligned → all glyphs melt
 
@@ -253,7 +253,7 @@ max glyph count ≈ (font library end constant − font library load address −
 ```
 
 Measured in practice for `0A93`: usable region `0x29000` = 167,936 B, bitmap offset `0x8F80` ⇒ **at most approximately 1025 glyphs**.
-The original 877 glyphs (138,848 B) fit comfortably; the localized 1205 glyphs (190,976 B) **exceed it by 23,040 B = 180 slots**,
+The original 877 glyphs (**whole library** 138,848 B) fit comfortably; the localized 1205 glyphs (**whole library** 190,976 B) **exceed it by 23,040 B = 180 slots**,
 which is exactly the root cause of "a few characters break, and change to a different scene and the broken characters change again" — **unrelated to alignment, and unrelated to the translation**.
 
 The forensics (pull the font library's **runtime copy** out of a savestate and compare it byte by byte against the font library in the ISO to see whether the differences start in one clean cut at a fixed offset), the fix (move the font library out of the reserved region and change the two "base / end" constants in the ELF), and the emulator game CRC change you **must** handle after editing the ELF, are all in [08 · Font Capacity and ELF Patching](08-font-capacity-and-elf-patching.md).

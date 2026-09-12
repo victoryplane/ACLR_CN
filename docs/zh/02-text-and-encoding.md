@@ -193,4 +193,4 @@ BND 文件表得到子文件。子文件按内层 id 区分：对话 `.mes` 为�
 - [01 · 解包](01-unpacking.md)：ISO9660 → AC.BIN → BND → fsliblzs 解压，拿到本篇用到的容器与字节。
 - [03 · 字库与渲染](03-fonts-and-rendering.md)：ac0_j1 / 0A93 / ID=9 字库、区间表、位图、CLUT，以及 MAPPING 码位的字形落点。
 - [04 · 回写与压缩](04-write-back-and-compression.md)：fslzss 兼容性、等长/变长替换规则与回写脚本。
-- 05-打包与ISO.md：改完文本后的装配、LBA/extent 验证与启动产物。
+- [05 · 打包与 ISO](05-packaging-and-iso.md)：改完文本后的装配、LBA/extent 验证与启动产物。

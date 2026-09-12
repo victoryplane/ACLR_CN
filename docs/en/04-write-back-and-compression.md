@@ -138,7 +138,7 @@ Whenever you modify any container, after write-back check it item by item agains
 |---|---|
 | 0x10 total size | includes the 0x2C header, and matches the actual file size after recompression |
 | 0x24 decompressed size | BE endianness; the game allocates its buffer based on this |
-| 0x2B compression flag | do not write 1 for part data (raw is not supported by the part loader) |
+| 0x2B raw flag | do not write 1 for part data (raw is not supported by the part loader; `0x14` is the compression flag) |
 | alignment | in the original, every container's total size is a multiple of 16; failing to pad means the loader cannot read a whole quadword, the tail data is wrong (the symptom is a mission loading forever) |
 
 **Container layer (BND)**

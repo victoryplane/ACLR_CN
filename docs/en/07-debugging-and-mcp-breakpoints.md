@@ -207,7 +207,7 @@ keeping only the technical path and omitting process details.
 - **Symptom**: paired, systematic wrong characters appear on the mission selection screen:
   强 (0x88AA) → 刚, 击 → 靶, 友 → 味.
 - **Static result**: the entire data chain encoding → range table → glyph table → bitmap is correct;
-  the render locating function `0x14dfb0` does indeed locate the bitmap with `tail × 512`.
+  the render locating function `0x14dfb0` does indeed locate the bitmap with `tail × 512` (as read with a general-purpose disassembler at the time; it later turned out that this disassembler mislabels the `MULT` producing that multiplication as nop — see "Pitfalls and lessons").
   At the static level there is no foothold for anything that could produce this wrong character.
 - **Static counter-evidence**: the tail differences of the three wrong-character pairs show no
   pattern (+110 / +141 / +13), and in "友 → 味" the 友 is a character that already existed in the

@@ -111,7 +111,7 @@ Result measured in practice in this project (this is the "decisive evidence"):
 
 ```
 Below 0x29000  : completely clean (byte-for-byte identical)
-first differing byte: 0x29002   (0x29000 is exactly the start of the 1025th glyph)
+first differing byte: 0x29002   (0x29000 is exactly the start of **slot 1025**; slots are 0-based)
 After 0x29000  : diff runs all the way to the end of the font library (61 runs / 1,078 bytes differ in total)
                  the diff runs are not contiguous — the overwriting data occasionally matches the bytes it overwrote,
                  but "not a single byte below the boundary was touched" is decisive
@@ -156,7 +156,7 @@ engine static data immediately after it starts at E = 0x1C2C150 = B + 0x29000   
 In other words: **the usable area the game reserved for this font library is only `0x29000` = 167,936 bytes**,
 immediately followed by the engine's own data (in this project a **512-byte** structure, located by the "font library end" constant).
 Our localized font library, however, is **190,976 bytes**, exceeding it by 23,040 bytes = **180 glyph slots**
-(slot numbers counted as "which glyph within the bitmap", starting from 0; that is, everything after the 1025th glyph).
+(slot numbers counted as "which glyph within the bitmap", starting from 0; that is, **slot 1025 and everything after it**).
 
 Why does the original release not have this problem? Do the capacity arithmetic and it becomes clear:
 
