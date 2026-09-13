@@ -74,7 +74,7 @@ import them instead of running them.
 | Script | Purpose | Dependencies |
 |---|---|---|
 | `fslzss2.py` | fsliblzs container decompression (LZSS stream; `selftest` / `decompress`) | stdlib |
-| `fslzss_compress.py` | fsliblzs LZSS compressor — ⚠️ lossless round-trip is **not** game compatibility, see docs/04 | stdlib |
+| `fslzss_compress.py` | fsliblzs LZSS compressor — **optimal-parse encoder by default** (recompressed 5xxxx records fit back into their original slots); `--mode greedy` reproduces the historical encoder byte for byte. ⚠️ a lossless round-trip is **not** game compatibility, see docs/04 | stdlib |
 | `bnd.py` | BND archive parser | stdlib |
 | `test_inner_bnd.py` | structural self-check of inner BND files (imports `fslzss2`) | stdlib |
 | `parse_mes.py` | `.mes` dialogue table parser (UTF-16LE text area) | stdlib |

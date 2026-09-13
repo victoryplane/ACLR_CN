@@ -67,6 +67,66 @@ After subsequently reverse-engineering the game's decompressor, the above attrib
 
 This means the LZSS algorithm itself is not the culprit; the real cause is more likely in the **loading / directory layer before decompression** (BND directory offset/size write-back). So the operating rule from 1.2 (don't recompress 5xxxx) is still the safety floor, but when troubleshooting this kind of bug you should check "directory / size synchronization" first, rather than hastily suspecting the compression algorithm itself. For detailed conclusions see [01 · Unpacking](01-unpacking.md).
 
+### 1.4 Making recompressed data fit back into its slot: why greedy is not enough, and how optimal parsing fixes it
+
+The equal-length discipline of §2.1 requires that "the recompressed data must not exceed the original
+slot". This is exactly where a hand-written compressor trips: **a greedy compressor often produces
+*larger* output than the game's own compressor**. Measured in practice over **all 2470** fsliblzs
+containers of the ISO:
+
+| encoder | total output, all 2470 containers | vs. the original files |
+|---|---|---|
+| greedy (3-byte prefix table + longest match, `MIN_MATCH = 3`) | 389,463,280 B | 102.84% (**bigger than the game's own**) |
+| **optimal parse** | 368,853,184 B | **97.39%** |
+
+For the 523 model + texture records (ids 5xxxx) the difference is decisive: greedy 103.43% (only
+**45/523** fit their original slot), optimal parse 98.01% (**523/523 fit**).
+
+> This also supplies a mechanistic piece of supporting evidence for "pitfall 1: recompressing 5xxxx →
+> corrupted hangar textures": the write path of the time was "replace in place + zero-pad", so as soon
+> as the new stream was bigger than the original entry it **overflowed into the next entry's data
+> area** — which is itself a form of data corruption. (Supporting evidence, not a proven sole cause.)
+
+**The original's secret**: reverse-engineering the factory streams token by token shows that
+**40–50% of their matches have length 2**. A `len = 2` token costs 2 bytes and covers 2 bytes, so it
+**saves nothing by itself** — but it merges two operations into one, which shrinks the flag-byte
+envelope and lets the rest of the parse land in better positions. That is the signature of **optimal
+parsing**; a greedy longest-match encoder simply cannot see it.
+
+**How to do it (three steps, container format untouched)**:
+
+1. **Match search**: a 3-byte hash chain walked near-to-far; the first hit for a given match length is
+   the **shortest** distance for that length;
+2. **Allow `len = 2` matches** (greedy discards them outright);
+3. **Optimal parse**: a one-dimensional DP for the globally cheapest token sequence. The cost unit is
+   1/8 byte — the flag byte is always written whole, so it can be **exactly amortized** over the
+   operations: literal = 9/8, match = 17/8. The DP result is optimal under that model.
+
+**Safety net**: greedy and optimal parses are both computed and the **smaller one is returned** — the
+output can never be larger than the old encoder's.
+
+**Tool and measurements**: `tools/fslzss_compress.py` uses optimal parsing by default
+(`--mode greedy` reproduces the historical behaviour byte for byte). On 12 real containers extracted
+from the original image (3,192,992 B of decompressed data in total): greedy totals **107.09%** (bigger
+than the original files), optimal **94.54%**, and round trips are **12/12 byte-identical**. The largest
+container (1.9 MB) is the clearest case: greedy 108.9% (would not fit its slot) → optimal parsing
+**92.7%, i.e. 7.3% smaller than the game's own compression**.
+
+**Three boundaries to remember together**:
+
+1. **A passing self-test is not game compatibility**: optimal parsing changes how the stream is built
+   (it uses `len = 2` matches). Even though it only emits constructs the original decompressor must
+   accept (`dist` always in 1..0xFFF and never 0, `len` 2..16, at least one literal byte before the
+   end marker), you **still have to verify in game** (enter the garage once, fight one mission) before
+   relying on it.
+2. **Speed**: pure-Python optimal parsing trades time for size — measured at **3.6–14.8 KB/s** counted on
+   the *decompressed* data (a 131 KB container takes about 9 s; a 1.9 MB container about 9 minutes),
+   while greedy runs at roughly 730 KB/s, two orders of magnitude faster. `--chain-max 128` is about 4×
+   faster at roughly +0.3% size; records above 8 MB automatically fall back to greedy.
+3. **Conservative choice**: since the "only touch 6xxxx" path of §1.2 is already validated, **leave
+   5xxxx alone if you can**; use optimal parsing only when 5xxxx must be recompressed, and accept the
+   in-game verification cost of item 1.
+
 ---
 
 ## 2. Equal-length and variable-length replacement
@@ -182,6 +242,7 @@ The counter-example: following old notes, someone changed the "short label with 
 - **Symptom**: several part textures in the garage 3D preview are corrupted, the same parts are fine after entering a mission / the test arena; the description text is always fine.
 - **Root cause**: 5xxxx (model + texture binaries) was also decompressed→recompressed; but the description in 5xxxx has never been displayed by the garage — the description text is actually provided by 6xxxx.
 - **How to avoid**: translate only 6xxxx (the description text) and leave 5xxxx under the original compression untouched. When troubleshooting write-back bugs, use bisection and restore the three variables "changed content / recompressed / moved the location" one at a time.
+- **Update (2026-09)**: there is also a mechanistic piece of supporting evidence — the greedy compressor of the time produced **larger** output than the factory data (102.84% over all containers), and the write path was "replace in place + zero-pad", so anything that did not fit **overflowed into the next entry's data area**, which is itself a form of corruption (see §1.4). With optimal parsing all 523 5xxxx records fit; but you still have to do the in-game verification yourself, so the guidance above stands.
 
 ### Pitfall 2: 0x00 padding → blank key guide text
 

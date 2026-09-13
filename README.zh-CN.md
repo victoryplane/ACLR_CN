@@ -63,7 +63,7 @@ ACLR_CN/
 | 脚本 | 用途 | 依赖 |
 |---|---|---|
 | `fslzss2.py` | fsliblzs 容器解压（LZSS 流，selftest/decompress） | 标准库 |
-| `fslzss_compress.py` | fsliblzs LZSS 压缩器 ⚠️ 往返无损≠游戏兼容，见 docs/04 | 标准库 |
+| `fslzss_compress.py` | fsliblzs LZSS 压缩器：**默认最优解析**（重压后的 5xxxx 也能塞回原槽位），`--mode greedy` 逐字节复现历史行为。⚠️ 往返无损≠游戏兼容，见 docs/04 | 标准库 |
 | `bnd.py` | BND 归档解析 | 标准库 |
 | `test_inner_bnd.py` | 内层 BND 结构自检（依赖同仓 fslzss2） | 标准库 |
 | `parse_mes.py` | .mes 对话文本表解析（UTF-16LE 文本区） | 标准库 |
